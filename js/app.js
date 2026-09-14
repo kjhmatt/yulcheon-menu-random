@@ -1,24 +1,45 @@
 /**
- * 율천동 메뉴랜덤 메인 애플리케이션 스크립트
+ * 율천동 메뉴랜덤 메인 컨트롤러 (나침반 정렬 + 고성능 글라이딩 연동)
  */
 
 document.addEventListener("DOMContentLoaded", () => {
   const emojiRain = new EmojiRain("bg-canvas");
   const navMap = new NavigationMap("map-container");
 
-  const containerWrap = document.getElementById("container-wrap");
   const mainCard = document.getElementById("main-card");
   const mapContainer = document.getElementById("map-container");
+  const viewInitial = document.getElementById("view-initial");
+  const viewPopup = document.getElementById("view-popup");
+  const compassBtn = document.getElementById("compass-btn");
+  const compassDial = document.getElementById("compass-dial");
 
   let currentRestaurant = null;
   let isNavigating = false;
   let activeDepartureCoords = null;
+
+  // 나침반 다이얼 연동
+  if (compassDial) {
+    navMap.bindCompassDial(compassDial);
+  }
+
+  // 나침반 버튼 클릭 시 정북방향 정렬
+  if (compassBtn) {
+    compassBtn.addEventListener("click", () => {
+      navMap.resetNorth();
+    });
+  }
 
   const startBtn = document.getElementById("start-btn");
   if (startBtn) {
     startBtn.addEventListener("click", () => handleStartRecommend());
   }
 
+  const rerollBtn = document.getElementById("reroll-btn");
+  if (rerollBtn) {
+    rerollBtn.addEventListener("click", () => handleReroll());
+  }
+
+  // 15분 이내 식당 필터링
   function getRestaurantsWithin15Minutes(originCoords) {
     return YULCHEON_RESTAURANTS.filter((rest) => {
       const directDist = NavigationMap.calculateDistance(originCoords, rest.coords);
@@ -28,6 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // 출발지 좌표 결정 (GPS 또는 성대 후문)
   function resolveDepartureCoords(userCoords) {
     if (!userCoords || userCoords.isDefault) {
       return { ...SKKU_CAMPUS_COORDS, isDefault: true };
@@ -39,6 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return { ...SKKU_CAMPUS_COORDS, isDefault: true };
   }
 
+  // 랜덤 맛집 선택 (15분 이내 보장)
   function pickRandomNearbyRestaurant(originCoords) {
     let eligible = getRestaurantsWithin15Minutes(originCoords);
     if (eligible.length === 0) eligible = YULCHEON_RESTAURANTS;
@@ -53,115 +76,100 @@ document.addEventListener("DOMContentLoaded", () => {
     return picked;
   }
 
+  // 추천 시작 핸들러
   async function handleStartRecommend() {
     if (isNavigating) return;
+    isNavigating = true;
 
+    // 1. 버튼 로딩 스피너
     startBtn.innerHTML = `
       <div class="loading-indicator">
         <div class="spinner"></div>
-        <span>도보 15분 이내 맛집 찾는 중...</span>
+        <span>맛집 탐색 중...</span>
       </div>
     `;
     startBtn.style.pointerEvents = "none";
 
-    // GPS 위치 획득
+    // 2. GPS 권한 및 출발지 확정
     const rawGpsCoords = await navMap.getUserLocation();
     activeDepartureCoords = resolveDepartureCoords(rawGpsCoords);
 
-    // 맛집 선별
+    // 3. 15분 이내 식당 선별
     const picked = pickRandomNearbyRestaurant(activeDepartureCoords);
     currentRestaurant = picked;
 
-    // 이모지 배경 fade-out 및 지도 활성화
-    emojiRain.fadeOut(700);
+    // 4. 팝업 뷰에 식당 정보 미리 채우기
+    fillPopupData(picked, null);
+
+    // 5. 배경 이모지 캔버스 페이드아웃 및 중지
+    emojiRain.fadeOut(400);
     mapContainer.classList.add("active");
 
-    // 지도 초기화 선행
-    navMap.initMap(activeDepartureCoords);
-
-    // ① 카드를 미리 팝업 컨텐츠로 교체 (아직 중앙에 있는 상태)
-    renderPopupContent(picked, null);
-
-    // ② 교체 직후 한 프레임 대기 후 슬라이드업 트랜지션 실행
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        containerWrap.classList.add("active-result");
-        mainCard.classList.add("card-popup");
-      });
-    });
-
-    // ③ 동시에 경로 탐색 (지도 load 완료까지 waitForLoad로 자동 대기)
-    isNavigating = true;
-    const routeInfo = await navMap.showRouteToRestaurant(picked, activeDepartureCoords);
-
-    // ④ 경로 결과 반영 (도보 시간 업데이트)
-    renderPopupContent(picked, routeInfo);
-  }
-
-  function renderPopupContent(restaurant, routeInfo) {
-    // 사진: 등록된 경우에만 표시
-    let galleryHtml = "";
-    if (restaurant.photos && restaurant.photos.length > 0) {
-      const photoItems = restaurant.photos.slice(0, 3).map((url, idx) =>
-        `<div class="photo-item">
-          <img src="${url}" alt="${restaurant.name} 사진 ${idx + 1}" loading="lazy"
-               onerror="this.parentElement.style.display='none'" />
-        </div>`
-      ).join("");
-      galleryHtml = `<div class="popup-gallery">${photoItems}</div>`;
+    // 우상단 나침반 버튼 페이드인 활성화
+    if (compassBtn) {
+      compassBtn.classList.add("active");
     }
 
-    const durationMin = routeInfo ? routeInfo.durationMinutes : "—";
-    const distanceM = routeInfo ? routeInfo.distanceMeters : "—";
-    const walkText = routeInfo
-      ? `도보 약 ${durationMin}분 (${distanceM}m)`
-      : "경로 탐색 중...";
+    // 6. 지도 인스턴스 준비
+    navMap.initMap(activeDepartureCoords);
+
+    // 7. 실키한 GPU 슬라이드업 실행
+    viewInitial.classList.add("hide");
+    viewPopup.classList.add("active");
+    mainCard.classList.add("card-popup");
+
+    // 8. 3D 지도에 경로 및 카메라 비행 실행
+    const routeInfo = await navMap.showRouteToRestaurant(picked, activeDepartureCoords);
+
+    // 9. 도보 소요 시간 뱃지만 갱신
+    updateWalkBadge(routeInfo);
+  }
+
+  // 팝업 엘리먼트에 데이터 바인딩
+  function fillPopupData(restaurant, routeInfo) {
+    document.getElementById("popup-restaurant-name").textContent = restaurant.name;
+    document.getElementById("popup-category-badge").textContent = restaurant.category;
+    document.getElementById("popup-rating-value").textContent = restaurant.rating.toFixed(1);
+    document.getElementById("popup-summary").textContent = restaurant.summary;
+    document.getElementById("popup-price-badge").textContent = `🏷️ ${restaurant.price_range}`;
+    document.getElementById("popup-kakao-link").href = restaurant.kakao_url;
+
     const originLabel = activeDepartureCoords && activeDepartureCoords.isDefault
       ? "성대 후문(쪽문) 출발"
       : "현 위치 출발";
+    document.getElementById("popup-origin-badge").textContent = `📍 ${originLabel}`;
 
-    mainCard.innerHTML = `
-      <div class="popup-content">
-        <div class="popup-header">
-          <div class="popup-title-group">
-            <h2 class="popup-name">${restaurant.name}</h2>
-            <span class="popup-category-badge">${restaurant.category}</span>
-          </div>
-          <div class="popup-rating-badge">
-            <span>⭐</span>
-            <span>${restaurant.rating.toFixed(1)}</span>
-          </div>
+    updateWalkBadge(routeInfo);
+
+    // 사진 갤러리 렌더링 (최대 3개, 없을 시 숨김)
+    const galleryContainer = document.getElementById("popup-gallery");
+    if (restaurant.photos && restaurant.photos.length > 0) {
+      const photosHtml = restaurant.photos.slice(0, 3).map((url, idx) => `
+        <div class="photo-item">
+          <img src="${url}" alt="${restaurant.name} 사진 ${idx + 1}" loading="lazy"
+               onerror="this.parentElement.style.display='none'" />
         </div>
-
-        <p class="popup-summary">${restaurant.summary}</p>
-
-        <div class="popup-meta">
-          <span class="popup-meta-item highlight-walk">🚶 ${walkText}</span>
-          <span class="popup-meta-item badge-origin">📍 ${originLabel}</span>
-          <span class="popup-meta-item">🏷️ ${restaurant.price_range}</span>
-        </div>
-
-        ${galleryHtml}
-
-        <div class="popup-actions">
-          <button id="reroll-btn" class="btn-sub-action btn-reroll">
-            <span>🎲 다른 메뉴 추천</span>
-          </button>
-          <a href="${restaurant.kakao_url}" target="_blank" rel="noopener noreferrer" class="btn-sub-action btn-kakao-map">
-            <span>🟡 카카오맵 바로보기</span>
-          </a>
-        </div>
-      </div>
-    `;
-
-    const rerollBtn = document.getElementById("reroll-btn");
-    if (rerollBtn) {
-      rerollBtn.addEventListener("click", handleReroll);
+      `).join("");
+      galleryContainer.innerHTML = photosHtml;
+      galleryContainer.style.display = "flex";
+    } else {
+      galleryContainer.innerHTML = "";
+      galleryContainer.style.display = "none";
     }
   }
 
+  // 도보 시간 뱃지만 단독 업데이트
+  function updateWalkBadge(routeInfo) {
+    const walkBadge = document.getElementById("popup-walk-badge");
+    if (routeInfo) {
+      walkBadge.textContent = `🚶 도보 약 ${routeInfo.durationMinutes}분 (${routeInfo.distanceMeters}m)`;
+    } else {
+      walkBadge.textContent = "🚶 도보 경로 계산 중...";
+    }
+  }
+
+  // 다른 메뉴 추천(재추천) 핸들러
   async function handleReroll() {
-    const rerollBtn = document.getElementById("reroll-btn");
     if (rerollBtn) {
       rerollBtn.style.opacity = "0.6";
       rerollBtn.innerHTML = `<span>🔄 탐색 중...</span>`;
@@ -170,9 +178,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const nextRestaurant = pickRandomNearbyRestaurant(activeDepartureCoords);
     currentRestaurant = nextRestaurant;
 
-    renderPopupContent(nextRestaurant, null);
+    fillPopupData(nextRestaurant, null);
 
     const routeInfo = await navMap.showRouteToRestaurant(nextRestaurant, activeDepartureCoords);
-    renderPopupContent(nextRestaurant, routeInfo);
+    updateWalkBadge(routeInfo);
+
+    if (rerollBtn) {
+      rerollBtn.style.opacity = "1";
+      rerollBtn.innerHTML = `<span>🎲 다른 메뉴 추천</span>`;
+    }
   }
 });

@@ -1,5 +1,5 @@
 /**
- * 3D 내비게이션 및 실제 도보 경로 모듈 (OSM 공식 routed-foot 도보 엔진)
+ * 3D 내비게이션 및 실제 도보 경로 모듈 (OSM 공식 routed-foot 도보 엔진 + 나침반 정렬)
  */
 class NavigationMap {
   constructor(containerId) {
@@ -10,6 +10,7 @@ class NavigationMap {
     this.destMarker = null;
     this.isMapReady = false;
     this._loadResolvers = [];
+    this.compassDial = null;
   }
 
   // 두 좌표 간 직선 거리(미터) 계산 (Haversine 공식)
@@ -30,6 +31,33 @@ class NavigationMap {
   // 현실적인 도보 소요 시간(분) 계산 (성인 평균 도보: 분당 65m, 시속 약 3.9km/h)
   static estimateWalkTime(distanceMeters) {
     return Math.max(1, Math.ceil(distanceMeters / 65));
+  }
+
+  // 나침반 다이얼 엘리먼트 바인딩
+  bindCompassDial(dialElement) {
+    this.compassDial = dialElement;
+    if (this.map && this.compassDial) {
+      this.attachCompassListener();
+    }
+  }
+
+  attachCompassListener() {
+    this.map.on('rotate', () => {
+      if (this.compassDial) {
+        const bearing = this.map.getBearing();
+        this.compassDial.style.transform = `rotate(${-bearing}deg)`;
+      }
+    });
+  }
+
+  // 정북방향(bearing: 0)으로 부드럽게 재정렬
+  resetNorth() {
+    if (!this.map) return;
+    this.map.easeTo({
+      bearing: 0,
+      duration: 600,
+      essential: true
+    });
   }
 
   // GPS 권한 요청 및 위치 획득
@@ -67,7 +95,7 @@ class NavigationMap {
     });
   }
 
-  // 3D 지도 초기화 (API 키 불필요 & 오픈 타일)
+  // 3D 지도 초기화
   initMap(initialCoords) {
     if (this.map) return;
 
@@ -98,26 +126,46 @@ class NavigationMap {
       antialias: true
     });
 
+    if (this.compassDial) {
+      this.attachCompassListener();
+    }
+
     this.map.on('load', () => {
       this.map.addSource('route', {
         type: 'geojson',
         data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } }
       });
 
+      // 1. 도보 외곽 네온 글로우 (시안/민트 도보 상징)
       this.map.addLayer({
         id: 'route-glow',
         type: 'line',
         source: 'route',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#00d2ff', 'line-width': 10, 'line-opacity': 0.6, 'line-blur': 3 }
+        paint: { 'line-color': '#00C7BE', 'line-width': 10, 'line-opacity': 0.45, 'line-blur': 3 }
       });
 
+      // 2. 도보 베이스 라인 (에메랄드 그린)
       this.map.addLayer({
         id: 'route-line',
         type: 'line',
         source: 'route',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#007AFF', 'line-width': 6, 'line-opacity': 0.95 }
+        paint: { 'line-color': '#30D158', 'line-width': 6, 'line-opacity': 0.95 }
+      });
+
+      // 3. 도보 전용 발자국 점선 (네이버지도/카카오맵 도보 길찾기 스타일)
+      this.map.addLayer({
+        id: 'route-walking-dots',
+        type: 'line',
+        source: 'route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 3,
+          'line-dasharray': [1, 2],
+          'line-opacity': 0.92
+        }
       });
 
       this.isMapReady = true;
@@ -154,7 +202,7 @@ class NavigationMap {
     // 1. 내 위치 마커 렌더링
     this.renderUserMarker(start, bearing);
 
-    // 2. 실제 보행자 도보(골목길/인도) 경로 가져오기
+    // 2. 실제 보행자 도보 경로 가져오기
     const routeInfo = await this.fetchWalkingRoute(start, dest);
     this.updateRouteLayer(routeInfo.coordinates);
 
@@ -172,6 +220,11 @@ class NavigationMap {
       essential: true
     });
 
+    // 나침반 초기 각도 동기화
+    if (this.compassDial) {
+      this.compassDial.style.transform = `rotate(${-bearing}deg)`;
+    }
+
     return routeInfo;
   }
 
@@ -185,7 +238,7 @@ class NavigationMap {
       <div class="user-nav-inner">
         <div class="user-nav-arrow" style="transform: rotate(${bearing}deg)">
           <svg viewBox="0 0 40 40" width="38" height="38">
-            <polygon points="20,4 34,34 20,26 6,34" fill="#007AFF" stroke="#ffffff" stroke-width="2.5"/>
+            <polygon points="20,4 34,34 20,26 6,34" fill="#30D158" stroke="#ffffff" stroke-width="2.5"/>
           </svg>
         </div>
         <div class="user-pulse-ring"></div>
@@ -219,14 +272,12 @@ class NavigationMap {
       .addTo(this.map);
   }
 
-  // 실제 보행자 도보 경로 API (OSM 공식 routed-foot 도보 엔진)
-  // 차도로 돌아가지 않고 골목길, 계단, 보행로를 이용한 실제 도보 경로 반환
+  // 실제 보행자 도보 경로 API (OSM 공식 routed-foot 엔진)
   async fetchWalkingRoute(start, dest) {
     const directDistance = NavigationMap.calculateDistance(start, dest);
     const estimatedWalkingDist = Math.round(directDistance * 1.25);
     const estimatedTime = NavigationMap.estimateWalkTime(estimatedWalkingDist);
 
-    // 1차 시도: OpenStreetMap 공식 보행자 전용 라우터 (routed-foot)
     const osmFootUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/` +
       `${start.lng},${start.lat};${dest.lng},${dest.lat}` +
       `?overview=full&geometries=geojson`;
@@ -243,7 +294,6 @@ class NavigationMap {
         if (data.routes && data.routes.length > 0) {
           const route = data.routes[0];
           const actualDistance = Math.round(route.distance);
-          // 실제 보행자 도보 거리 기준으로 분당 65m 소요시간 산출
           const actualWalkMinutes = NavigationMap.estimateWalkTime(actualDistance);
 
           return {
@@ -254,32 +304,9 @@ class NavigationMap {
         }
       }
     } catch (e) {
-      console.warn("OSM routed-foot 호출 실패, fallback 시도:", e.message);
+      console.warn("OSM routed-foot 호출 실패:", e.message);
     }
 
-    // 2차 fallback: OSRM 공개 서버
-    try {
-      const fallbackUrl = `https://router.project-osrm.org/route/v1/walking/` +
-        `${start.lng},${start.lat};${dest.lng},${dest.lat}` +
-        `?overview=full&geometries=geojson`;
-      const res2 = await fetch(fallbackUrl);
-      if (res2.ok) {
-        const data2 = await res2.json();
-        if (data2.routes && data2.routes.length > 0) {
-          const route2 = data2.routes[0];
-          const actualDistance2 = Math.round(route2.distance);
-          return {
-            coordinates: route2.geometry.coordinates,
-            durationMinutes: NavigationMap.estimateWalkTime(actualDistance2),
-            distanceMeters: actualDistance2
-          };
-        }
-      }
-    } catch (e2) {
-      console.warn("Fallback 라우터 실패:", e2.message);
-    }
-
-    // 최종 fallback: 직선 좌표
     return {
       coordinates: [[start.lng, start.lat], [dest.lng, dest.lat]],
       durationMinutes: estimatedTime,

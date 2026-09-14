@@ -20,33 +20,94 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- 음식 이모지 비 배경 -->
+  <!-- 최적화된 음식 이모지 비 배경 -->
   <canvas id="bg-canvas"></canvas>
 
   <!-- 3D 지도 컨테이너 -->
   <div id="map-container"></div>
 
+  <!-- 우상단 정북방향 나침반 버튼 (지도 로드 시 페이드인) -->
+  <button id="compass-btn" class="compass-btn" aria-label="정북방향 정렬" title="정북방향 정렬">
+    <div id="compass-dial" class="compass-dial">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+        <!-- 북쪽 바늘 (빨간색) -->
+        <polygon points="12,2.5 16,11.5 12,9.5 8,11.5" fill="#FF3B30" />
+        <!-- 남쪽 바늘 (은백색) -->
+        <polygon points="12,21.5 16,11.5 12,9.5 8,11.5" fill="#E5E5EA" stroke="#AEAEB2" stroke-width="0.5" />
+        <!-- 중앙 회전축 핀 -->
+        <circle cx="12" cy="10.5" r="1.5" fill="#1C1C1E" />
+      </svg>
+    </div>
+    <span class="compass-north-letter">N</span>
+  </button>
+
   <!-- 메인 글래스 카드 래퍼 -->
   <div id="container-wrap" class="glass-container-wrap">
     <div id="main-card" class="glass-card">
+      
+      <!-- Liquid Glass 내부 빛 반사 및 굴절 레이어 -->
+      <div class="glass-specular-sheen"></div>
 
-      <!-- 초기 중앙 박스 -->
-      <div class="card-header-initial">
-        <h1 class="card-title">율천동 메뉴랜덤</h1>
-        <p class="card-subtitle">성균관대 자연과학캠퍼스 카카오맵 3.5+ 엄선 맛집</p>
+      <!-- ① 초기 화면 뷰 -->
+      <div id="view-initial" class="card-view-layer view-initial active">
+        <div class="card-header-initial">
+          <h1 class="card-title">율천동 메뉴랜덤</h1>
+          <p class="card-subtitle">성균관대 자연과학캠퍼스 카카오맵 3.5+ 엄선 맛집</p>
+        </div>
+        <div class="initial-footer">
+          <button id="start-btn" class="btn-recommend" aria-label="메뉴 추천 시작">
+            <span class="btn-text">추천 시작</span>
+            <svg class="btn-arrow-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <div class="initial-footer">
-        <button id="start-btn" class="btn-recommend" aria-label="메뉴 추천 시작">
-          <span>추천 시작</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
-        </button>
+      <!-- ② 추천 결과 팝업 뷰 (위로 미끄러져 올라간 후 페이드인) -->
+      <div id="view-popup" class="card-view-layer view-popup">
+        <div class="popup-header">
+          <div class="popup-title-group">
+            <h2 id="popup-restaurant-name" class="popup-name">—</h2>
+            <span id="popup-category-badge" class="popup-category-badge">—</span>
+          </div>
+          <div class="popup-rating-badge">
+            <span class="star-icon">⭐</span>
+            <span id="popup-rating-value">—</span>
+          </div>
+        </div>
+
+        <p id="popup-summary" class="popup-summary">—</p>
+
+        <div class="popup-meta">
+          <span id="popup-walk-badge" class="popup-meta-item highlight-walk">🚶 계산 중...</span>
+          <span id="popup-origin-badge" class="popup-meta-item badge-origin">📍 위치 확인 중</span>
+          <span id="popup-price-badge" class="popup-meta-item">🏷️ —</span>
+        </div>
+
+        <!-- 3개 사진 갤러리 (사진이 있는 경우에만 표시) -->
+        <div id="popup-gallery" class="popup-gallery"></div>
+
+        <div class="popup-actions">
+          <button id="reroll-btn" class="btn-sub-action btn-reroll">
+            <span>🎲 다른 메뉴 추천</span>
+          </button>
+          <a id="popup-kakao-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-sub-action btn-kakao-map">
+            <span>🟡 카카오맵 바로보기</span>
+          </a>
+        </div>
       </div>
 
     </div>
   </div>
+
+  <!-- 좌하단 GitHub 저장소 링크 (Liquid Glass 캡슐 디자인) -->
+  <a href="https://github.com/kjhmatt/yulcheon-menu-random" target="_blank" rel="noopener noreferrer" class="github-corner-link" aria-label="GitHub 저장소 바로가기">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+    </svg>
+    <span>GitHub</span>
+  </a>
 
   <!-- 스크립트 -->
   <script src="js/restaurants.js"></script>
