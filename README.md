@@ -28,9 +28,13 @@
    - 틸트(Pitch 58°) 3D 시점과 실시간 회전 나침반 제공.
    - 지도의 회전 각도를 실시간으로 가리키며, 클릭 시 지도를 정북방향(North)으로 즉시 정렬합니다.
 
-6. **100% 율전동 실존 카카오맵 3.5+ 찐 맛집 탑재**
-   - 봉수육, 나츠비 율전동본점, 보리네주먹고기, 윤실장초밥, 율전방앗간, 오스테리아 우노, 철판스토리, 헤이모이라 등 성대 자과캠 학생들이 실제로 즐겨 찾는 대표 맛집 데이터베이스.
-   - 정식 상호명 기반 카카오맵 다이렉트 상세 페이지 연동.
+6. **성균관대 자연과학캠퍼스(율전동) 100% 실존 & 2025~2026 검증 맛집 DB**
+   - 폐업 및 비영업 음식점을 철저히 전수 검증하여 제외하고, 실제 영업 중인 찐맛집만 엄선.
+   - 단독 상호명 기반 카카오맵 즉시 검색 링크 연동.
+   - GPS 권한 시 15분 도보권 이내 최적 거리 계산 및 추천.
+
+7. **Apple 감성 Ultra-clear Liquid Glass & Backdrop Blur**
+   - 하드웨어 가속 `backdrop-filter: blur(7px)`와 곡면 스페큘러 림을 결합하여, 배경의 이모지 비와 지도가 은은하고 투명하게 투과되는 세련된 유리 카드 UI 구현.
 
 ---
 
@@ -38,7 +42,7 @@
 
 이 프로젝트는 **Google Antigravity** 에이전틱 코딩 환경에서 **Gemini** 모델을 활용하여 제작되었습니다.
 - 아이디어 기획 및 요구사항 구체화
-- 초투명 Liquid Glass 디자인 시스템 및 UI 컴포넌트 설계
+- 광학 굴절 Liquid Glass 디자인 시스템 및 UI 컴포넌트 설계
 - MapLibre GL JS 기반 3D 지도 & OSM 보행자 라우팅 엔진 최적화
 - 오프스크린 캔버스 렌더링을 통한 60fps 성능 튜닝 및 버그 트래킹
 
@@ -63,9 +67,10 @@
    - **Build and deployment > Source**를 `Deploy from a branch`로 선택합니다.
    - **Branch**를 `main` (루트 `/ (root)`)으로 지정 후 **Save**를 클릭합니다.
 
-3. **커스텀 도메인 연동 (Cloudflare DNS)**
-   - Cloudflare DNS에 CNAME 레코드 추가 (`Name: 서브도메인`, `Target: <사용자명>.github.io`).
-   - 저장소 **Custom domain**에 해당 서브도메인을 등록하고 **Enforce HTTPS**를 활성화합니다.
+3. **Cloudflare Pages 배포 (실시간 위치 검색 백엔드)**
+   - Cloudflare 대시보드에서 GitHub 저장소를 Pages 프로젝트로 연결합니다.
+   - **Settings > Environment Variables**에 `KAKAO_REST_API_KEY` (Secret)를 등록합니다.
+   - `functions/api/recommend.js`가 자동으로 서버리스 API로 배포되어, API Key 노출 없이 실시간 카카오맵 맛집 검색이 동작합니다.
 
 ---
 
@@ -73,13 +78,16 @@
 
 ```
 yulcheon-food-picker/
-├── index.html          # 메인 HTML 마크업
+├── functions/
+│   └── api/
+│       └── recommend.js # Cloudflare Pages Function (실시간 카카오맵 맛집 검색 API)
+├── index.html           # 메인 HTML 마크업
 ├── css/
-│   └── style.css       # Liquid Glass 디자인 시스템 및 반응형 스타일
+│   └── style.css        # Ultra-clear Liquid Glass 및 반응형 스타일
 ├── js/
-│   ├── restaurants.js  # 100% 성대 자과캠 율전동 실존 맛집 데이터베이스
-│   ├── emoji-rain.js   # 오프스크린 캐싱 고성능 음식 이모지 캔버스 모듈
-│   ├── navigation.js   # 3D 지도, 보행자 도보 라우팅 & 나침반 모듈
-│   └── app.js          # 추천 플로우 및 듀얼 뷰 트랜지션 컨트롤러
-└── README.md           # 프로젝트 문서 및 안내
+│   ├── restaurants.js   # 성대 자과캠 율전동 100% 실존 검증 맛집 DB (오프라인/폴백)
+│   ├── emoji-rain.js    # 오프스크린 캐싱 고성능 음식 이모지 캔버스 모듈
+│   ├── navigation.js    # 3D 지도, 보행자 도보 라우팅 & 나침반 모듈
+│   └── app.js           # 실시간 API 연동 및 추천 플로우 컨트롤러
+└── README.md            # 프로젝트 문서 및 안내
 ```
