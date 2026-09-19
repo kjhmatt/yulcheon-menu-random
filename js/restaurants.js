@@ -10,7 +10,7 @@
 const SKKU_CAMPUS_COORDS = {
   lat: 37.29595,
   lng: 126.97415,
-  name: "성균관대 자연과학캠퍼스 쪽문"
+  name: "성균관대 후문"
 };
 
 const YULCHEON_RESTAURANTS = [

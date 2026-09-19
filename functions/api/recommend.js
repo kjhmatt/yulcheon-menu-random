@@ -34,11 +34,13 @@ export async function onRequestGet(context) {
 
   try {
     const url = new URL(request.url);
-    const lat = url.searchParams.get("lat") || "37.29595"; // 기본값: 성균관대 자과캠
+    const lat = url.searchParams.get("lat") || "37.29595"; // 기본값: 성균관대 후문
     const lng = url.searchParams.get("lng") || "126.97415";
-    const rawRadius = parseInt(url.searchParams.get("radius") || "1000", 10);
-    // 반경 300m ~ 2500m로 안전하게 클램핑 (도보권)
-    const radius = Math.max(300, Math.min(2500, isNaN(rawRadius) ? 1000 : rawRadius));
+    const rawRadius = parseInt(url.searchParams.get("radius") || "1500", 10);
+    // 도보 20분 기준: 반경 300m ~ 3000m 안전 클램핑 (기본 1500m)
+    const radius = Math.max(300, Math.min(3000, isNaN(rawRadius) ? 1500 : rawRadius));
+    const requestedPage = Math.max(1, Math.min(3, parseInt(url.searchParams.get("page") || "1", 10)));
+    const sort = url.searchParams.get("sort") || "accuracy"; // 인기/정확도순 또는 distance(거리순)
 
     // Cloudflare 대시보드 Secret에 등록된 키 획득
     const KAKAO_KEY = env.KAKAO_REST_API_KEY;
@@ -54,9 +56,9 @@ export async function onRequestGet(context) {
 
     // 카카오 로컬 카테고리 검색 API 호출 (FD6 = 음식점)
     // Kakao API 규격: x는 경도(lng), y는 위도(lat)
-    const kakaoApiUrl = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=FD6&x=${lng}&y=${lat}&radius=${radius}&size=15&sort=distance`;
+    let kakaoApiUrl = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=FD6&x=${lng}&y=${lat}&radius=${radius}&size=15&page=${requestedPage}&sort=${sort}`;
 
-    const kakaoRes = await fetch(kakaoApiUrl, {
+    let kakaoRes = await fetch(kakaoApiUrl, {
       method: "GET",
       headers: {
         "Authorization": `KakaoAK ${KAKAO_KEY.trim()}`
@@ -75,14 +77,27 @@ export async function onRequestGet(context) {
       );
     }
 
-    const kakaoData = await kakaoRes.json();
-    const documents = kakaoData.documents;
+    let kakaoData = await kakaoRes.json();
+    let documents = kakaoData.documents;
+
+    // 만약 2~3페이지 요청 시 결과가 없다면 1페이지로 자동 재시도
+    if ((!documents || documents.length === 0) && requestedPage > 1) {
+      kakaoApiUrl = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=FD6&x=${lng}&y=${lat}&radius=${radius}&size=15&page=1&sort=${sort}`;
+      kakaoRes = await fetch(kakaoApiUrl, {
+        method: "GET",
+        headers: { "Authorization": `KakaoAK ${KAKAO_KEY.trim()}` }
+      });
+      if (kakaoRes.ok) {
+        kakaoData = await kakaoRes.json();
+        documents = kakaoData.documents;
+      }
+    }
 
     if (!documents || documents.length === 0) {
       return new Response(
         JSON.stringify({
           error: "NO_RESTAURANTS_FOUND",
-          message: `반경 ${radius}m 이내에 검색된 음식점이 없습니다.`
+          message: `도보 20분(반경 ${radius}m) 이내에 검색된 음식점이 없습니다.`
         }),
         { status: 404, headers: corsHeaders }
       );

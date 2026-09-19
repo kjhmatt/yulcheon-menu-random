@@ -49,32 +49,28 @@ document.addEventListener("DOMContentLoaded", () => {
     rerollBtn.addEventListener("click", () => handleReroll());
   }
 
-  // 15분 도보권 이내 식당 필터링
-  function getRestaurantsWithin15Minutes(originCoords) {
+  // 20분 도보권 이내 식당 필터링 (로컬 DB 폴백용)
+  function getRestaurantsWithin20Minutes(originCoords) {
     return YULCHEON_RESTAURANTS.filter((rest) => {
       const directDist = NavigationMap.calculateDistance(originCoords, rest.coords);
       const estWalkingDist = Math.round(directDist * 1.25);
       const estMinutes = NavigationMap.estimateWalkTime(estWalkingDist);
-      return estMinutes <= 15;
+      return estMinutes <= 20;
     });
   }
 
-  // 출발지 좌표 결정 (성대 인근 여부 판별)
+  // 출발지 좌표 결정 (전국 어디서나 사용자 위치 우선, 위치 미파악 시에만 성균관대 후문 기준)
   function resolveDepartureCoords(userCoords) {
-    if (!userCoords || userCoords.isDefault) {
-      return { ...defaultOrigin, isDefault: true, name: defaultOrigin.name || "성대 쪽문" };
-    }
-    const nearby = getRestaurantsWithin15Minutes(userCoords);
-    if (nearby.length > 0) {
+    if (userCoords && !userCoords.isDefault && typeof userCoords.lat === "number" && typeof userCoords.lng === "number") {
       return { lat: userCoords.lat, lng: userCoords.lng, isDefault: false, name: "현재 위치" };
     }
-    // 사용자가 성대 율전동 반경 밖인 경우 성대 쪽문 기준으로 추천
-    return { ...defaultOrigin, isDefault: true, name: defaultOrigin.name || "성대 쪽문" };
+    // 브라우저가 사용자 위치를 전혀 파악할 수 없는 경우 성균관대학교 후문 기준
+    return { ...defaultOrigin, isDefault: true, name: defaultOrigin.name || "성균관대 후문" };
   }
 
-  // 랜덤 맛집 선택 (직전 추천 식당 중복 방지)
+  // 랜덤 맛집 선택 (로컬 검증 DB 폴백용)
   function pickRandomRestaurant(originCoords) {
-    let eligible = getRestaurantsWithin15Minutes(originCoords);
+    let eligible = getRestaurantsWithin20Minutes(originCoords);
     if (eligible.length === 0) {
       eligible = YULCHEON_RESTAURANTS;
     }
@@ -89,11 +85,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return picked;
   }
 
-  // 실시간 백엔드(/api/recommend) 우선 조회 후 로컬 DB 자동 폴백
+  // 실시간 백엔드(/api/recommend) 전국 도보 20분(1.5km) 탐색 후 로컬 DB 자동 폴백
   async function fetchRecommendedRestaurant(originCoords) {
     try {
-      const radius = 1000;
-      const res = await fetch(`/api/recommend?lat=${originCoords.lat}&lng=${originCoords.lng}&radius=${radius}`, {
+      const radius = 1500; // 도보 약 20분 반경 1.5km
+      const randomPage = Math.floor(Math.random() * 3) + 1;
+      const res = await fetch(`/api/recommend?lat=${originCoords.lat}&lng=${originCoords.lng}&radius=${radius}&page=${randomPage}`, {
         headers: { "Accept": "application/json" }
       });
       if (res.ok) {
