@@ -98,11 +98,25 @@ document.addEventListener("DOMContentLoaded", () => {
         if (data && data.coords && typeof data.coords.lat === "number") {
           return data;
         }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.warn("실시간 맛집 API 응답:", res.status, errJson);
       }
     } catch (err) {
-      // 로컬 개발 또는 백엔드 미배포 시 조용히 로컬 DB 폴백
+      console.warn("실시간 맛집 API 연결 불가:", err);
     }
-    return pickRandomRestaurant(originCoords);
+
+    // [로컬 폴백 처리]
+    // 1. 사용자가 성대 도보 20분권 내에 있는 경우 로컬 맛집 추천
+    const eligible = getRestaurantsWithin20Minutes(originCoords);
+    if (eligible.length > 0) {
+      return pickRandomRestaurant(originCoords);
+    }
+
+    // 2. 사용자가 성대 밖인데 실시간 API 호출이 실패한 경우:
+    // 먼 거리에서 성대 식당으로 무리하게 길안내하지 않고, 기준점을 성대 후문으로 안전하게 전환하여 추천
+    activeDepartureCoords = { ...defaultOrigin, isDefault: true, name: "성균관대 후문 (위치 미탐색 대체)" };
+    return pickRandomRestaurant(defaultOrigin);
   }
 
   // 추천 시작 핸들러 (버튼 클릭 시에만 지도 활성화 및 팝업 슬라이드업)
