@@ -259,17 +259,26 @@ class NavigationMap {
     el.innerHTML = `
       <div class="dest-bubble-inner">
         <div class="dest-bubble-card">
-          <span class="dest-bubble-icon">📍</span>
-          <span class="dest-bubble-title">${name}</span>
+          <svg class="dest-bubble-icon" aria-hidden="true" viewBox="0 0 14 18" fill="none">
+            <path d="M7 16s5-5.5 5-9a5 5 0 0 0-10 0c0 3.5 5 9 5 9Z" fill="currentColor"/>
+            <circle cx="7" cy="7" r="1.8" fill="#fff"/>
+          </svg>
+          <span class="dest-bubble-title"></span>
           <span class="dest-bubble-time">도보 ${durationMinutes}분</span>
         </div>
         <div class="dest-bubble-pointer"></div>
       </div>
     `;
 
+    const title = el.querySelector('.dest-bubble-title');
+    title.textContent = name;
+    title.title = name;
     this.destMarker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat([coords.lng, coords.lat])
       .addTo(this.map);
+    // MapLibre retains position updates; DOM text sits above the glass canvas.
+    document.getElementById('map-marker-layer').appendChild(el);
+    this.onDestinationMarker?.(el);
   }
 
   // 실제 보행자 도보 경로 API (OSM 공식 routed-foot 엔진)

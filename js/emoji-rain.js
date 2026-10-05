@@ -13,6 +13,7 @@ class EmojiRain {
     this.opacity = 1.0;
     this.isPaused = false;
     this.lastTime = 0;
+    this.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
     this.init();
   }
@@ -21,6 +22,20 @@ class EmojiRain {
     this.buildEmojiSprites();
     this.resize();
     window.addEventListener('resize', () => this.resize(), { passive: true });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        cancelAnimationFrame(this.animationId);
+        this.animationId = null;
+      } else if (!this.isPaused) {
+        this.lastTime = 0;
+        this.animate(performance.now());
+      }
+    });
+    this.reducedMotion.addEventListener('change', () => {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+      if (!this.isPaused) this.animate(performance.now());
+    });
 
     for (let i = 0; i < this.maxParticles; i++) {
       this.particles.push(this.createParticle(true));
@@ -31,7 +46,8 @@ class EmojiRain {
 
   // 18종류의 이모지를 오프스크린 캔버스에 1회만 고화질로 캐싱
   buildEmojiSprites() {
-    const size = 96; // 캐시 텍스처 크기
+    this.spriteDpr = window.devicePixelRatio || 1;
+    const size = Math.ceil(96 * Math.min(this.spriteDpr, 4));
     this.emojis.forEach((emoji) => {
       const offCanvas = document.createElement('canvas');
       offCanvas.width = size;
@@ -48,11 +64,24 @@ class EmojiRain {
   resize() {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
-    // 과도한 4K 렌더링 부하 방지 (최대 1.5배수로 캡핑하여 극상의 부드러움 확보)
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const dpr = window.devicePixelRatio || 1;
+    if (this.spriteDpr !== dpr) this.buildEmojiSprites();
     this.canvas.width = Math.floor(this.width * dpr);
     this.canvas.height = Math.floor(this.height * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.background = EmojiRain.createBackground(this.ctx, this.width, this.height);
+    if (this.reducedMotion.matches && this.particles.length && !this.isPaused) {
+      this.animate(performance.now());
+    }
+  }
+
+  // Paint the wallpaper into the canvas so the glass samples the actual pixels.
+  static createBackground(ctx, width, height) {
+    const radius = Math.hypot(width * 0.5, height * 0.65);
+    const gradient = ctx.createRadialGradient(width * 0.5, height * 0.35, 0, width * 0.5, height * 0.35, radius);
+    gradient.addColorStop(0, '#fff6ee');
+    gradient.addColorStop(1, '#eef4fc');
+    return gradient;
   }
 
   createParticle(randomY = false) {
@@ -72,21 +101,27 @@ class EmojiRain {
   }
 
   animate(currentTime) {
-    if (this.isPaused) return;
+    if (this.isPaused || document.hidden) return;
 
     // 델타 타임 보정 (60Hz / 120Hz 모니터 모두 부드러운 동일 속도 유지)
     const dt = this.lastTime ? Math.min((currentTime - this.lastTime) / 16.67, 2.0) : 1.0;
     this.lastTime = currentTime;
 
     this.ctx.clearRect(0, 0, this.width, this.height);
+    this.ctx.globalAlpha = this.opacity;
+    this.ctx.fillStyle = this.background;
+    this.ctx.fillRect(0, 0, this.width, this.height);
+    this.ctx.globalAlpha = 1;
 
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
 
-      p.y += p.speedY * dt;
-      p.wobble += p.wobbleSpeed * dt;
-      p.x += (Math.sin(p.wobble) * 1.2 + p.speedX) * dt;
-      p.rotation += p.rotationSpeed * dt;
+      if (!this.reducedMotion.matches) {
+        p.y += p.speedY * dt;
+        p.wobble += p.wobbleSpeed * dt;
+        p.x += (Math.sin(p.wobble) * 1.2 + p.speedX) * dt;
+        p.rotation += p.rotationSpeed * dt;
+      }
 
       if (p.y > this.height + 90) {
         this.particles[i] = this.createParticle(false);
@@ -105,7 +140,8 @@ class EmojiRain {
       this.ctx.restore();
     }
 
-    this.animationId = requestAnimationFrame((t) => this.animate(t));
+    this.onFrame?.();
+    this.animationId = this.reducedMotion.matches ? null : requestAnimationFrame((t) => this.animate(t));
   }
 
   fadeOut(duration = 500) {
@@ -116,6 +152,7 @@ class EmojiRain {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
       this.opacity = startOpacity * (1 - progress);
+      if (this.reducedMotion.matches) this.animate(currentTime);
 
       if (progress < 1) {
         requestAnimationFrame(step);

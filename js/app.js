@@ -9,6 +9,9 @@
 document.addEventListener("DOMContentLoaded", () => {
   const emojiRain = new EmojiRain("bg-canvas");
   const navMap = new NavigationMap("map-container");
+  const glass = new LiquidGlass("glass-canvas", emojiRain);
+  navMap.onDestinationMarker = element => glass.setDestinationMarker(element);
+  emojiRain.onFrame = () => glass.capture();
 
   const mainCard = document.getElementById("main-card");
   const mapContainer = document.getElementById("map-container");
@@ -18,6 +21,31 @@ document.addEventListener("DOMContentLoaded", () => {
   const compassDial = document.getElementById("compass-dial");
   const startBtn = document.getElementById("start-btn");
   const rerollBtn = document.getElementById("reroll-btn");
+  const rerollContent = rerollBtn.innerHTML;
+
+  // Keep content at its natural size while the outer card animates to fit it.
+  let cardHeight = mainCard.getBoundingClientRect().height;
+  mainCard.style.height = `${cardHeight}px`;
+  let cardResizeFrame = null;
+  const cardResizeObserver = new ResizeObserver(() => {
+    if (cardResizeFrame !== null) return;
+    cardResizeFrame = requestAnimationFrame(() => {
+      cardResizeFrame = null;
+      const style = getComputedStyle(mainCard);
+      const contentHeight = viewInitial.getBoundingClientRect().height
+        + viewPopup.getBoundingClientRect().height;
+      const nextHeight = Math.max(
+        parseFloat(style.minHeight) || 0,
+        contentHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+          + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)
+      );
+      if (Math.abs(nextHeight - cardHeight) < 0.5) return;
+      cardHeight = nextHeight;
+      mainCard.style.height = `${cardHeight}px`;
+    });
+  });
+  // Card observation also catches width and animated padding changes.
+  [mainCard, viewInitial, viewPopup].forEach(element => cardResizeObserver.observe(element));
 
   let currentRestaurant = null;
   let isNavigating = false;
@@ -151,6 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
     mapContainer.classList.add("active");
     if (!isMapInitialized) {
       navMap.initMap(activeDepartureCoords);
+      glass.setMap(navMap.map);
       isMapInitialized = true;
     }
 
@@ -181,13 +210,13 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("popup-rating-value").textContent = ratingVal;
 
     document.getElementById("popup-summary").textContent = restaurant.summary;
-    document.getElementById("popup-price-badge").textContent = `🏷️ ${restaurant.price_range}`;
+    setBadgeText("popup-price-badge", restaurant.price_range);
     document.getElementById("popup-kakao-link").href = restaurant.kakao_url;
 
     const originLabel = activeDepartureCoords && activeDepartureCoords.isDefault
       ? `${activeDepartureCoords.name} 출발`
       : "현 위치 출발";
-    document.getElementById("popup-origin-badge").textContent = `📍 ${originLabel}`;
+    setBadgeText("popup-origin-badge", originLabel);
 
     updateWalkBadge(routeInfo);
 
@@ -209,20 +238,28 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // 도보 소요 시간 뱃지 텍스트 갱신
+  function setBadgeText(id, text) {
+    document.querySelector(`#${id} .badge-label`).textContent = text;
+  }
+
   function updateWalkBadge(routeInfo) {
     const walkBadge = document.getElementById("popup-walk-badge");
     if (!walkBadge) return;
 
     if (routeInfo) {
-      walkBadge.textContent = `🚶 도보 약 ${routeInfo.durationMinutes}분 (${routeInfo.distanceMeters}m)`;
+      setBadgeText("popup-walk-badge", `도보 약 ${routeInfo.durationMinutes}분 (${routeInfo.distanceMeters}m)`);
     } else {
-      walkBadge.textContent = "🚶 도보 경로 계산 중...";
+      setBadgeText("popup-walk-badge", "도보 경로 계산 중...");
     }
   }
 
   // 🎲 다른 메뉴 추천(재추천) 핸들러
   async function handleReroll() {
+    if (isNavigating) return;
+    isNavigating = true;
     if (rerollBtn) {
+      rerollBtn.disabled = true;
+      rerollBtn.setAttribute("aria-busy", "true");
       rerollBtn.style.opacity = "0.6";
       rerollBtn.innerHTML = `<span>🔄 탐색 중...</span>`;
     }
@@ -237,7 +274,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (rerollBtn) {
       rerollBtn.style.opacity = "1";
-      rerollBtn.innerHTML = `<span>🎲 다른 메뉴 추천</span>`;
+      rerollBtn.innerHTML = rerollContent;
+      rerollBtn.disabled = false;
+      rerollBtn.removeAttribute("aria-busy");
     }
+    isNavigating = false;
   }
 });
