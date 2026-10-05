@@ -198,11 +198,11 @@ class LiquidGlass {
     this.height = innerHeight;
     const gl = this.gl;
     const limit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    this.dpr = Math.min(devicePixelRatio || 1, limit / this.width, limit / this.height);
+    this.dpr = Math.min(devicePixelRatio || 1, LiquidGlass.maxDpr, limit / this.width, limit / this.height);
     this.canvas.width = Math.round(this.width * this.dpr);
     this.canvas.height = Math.round(this.height * this.dpr);
-    // Keep sharp refraction and geometry at native device resolution. Blur uses
-    // the same pixel grid; scissoring limits work instead of degrading textures.
+    // Bound the offscreen pixel budget on high-DPR phones. DOM content and the
+    // map remain native-resolution; only the glass material is capped.
     this.scene.width = this.canvas.width;
     this.scene.height = this.canvas.height;
     this.mapSnapshot.width = this.scene.width;
@@ -249,7 +249,7 @@ class LiquidGlass {
   capture(force = false) {
     if (!this.enabled || document.hidden) return;
     const now = performance.now();
-    if (!force && now - this.lastCapture < 1000 / 60) return;
+    if (!force && now - this.lastCapture < LiquidGlass.captureInterval) return;
     this.lastCapture = now;
     try {
       const ctx = this.ctx;
@@ -496,6 +496,8 @@ class LiquidGlass {
 
 // Resolve from this script, so static hosting under a subdirectory also works.
 LiquidGlass.shaderRoot = new URL('shaders/', document.currentScript.src);
+LiquidGlass.maxDpr = 1.5;
+LiquidGlass.captureInterval = 1000 / 30;
 // Balance text readability and transparency with a gentler reference edge lens.
 LiquidGlass.material = Object.freeze({
   cardBlur: 3, cardBlurMix: 0.775, cardTint: 0.11, popupTint: 0.32,

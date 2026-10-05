@@ -17,14 +17,17 @@ the pin uses SVG to avoid emoji baseline differences.
 
 ## Rendering and reference correspondence
 
-1. **Native resolution backdrop.** Composite the actual emoji and map canvases
-   at the device pixel ratio. Capture the map in its `render` event and retain a
-   snapshot; later frames never read a discarded WebGL drawing buffer. The emoji
-   wallpaper and sprites are also rendered at the device pixel ratio.
+1. **Bounded-resolution backdrop.** Composite the actual emoji and map canvases
+   at up to 1.5 device pixels per CSS pixel. This bounds texture memory and
+   bandwidth on high-DPR phones while DOM content and the map remain at their
+   native resolution. Capture the map in its `render` event and retain a
+   snapshot; later frames never read a discarded WebGL drawing buffer. Continuous
+   backdrop capture is limited to 30 fps; forced resize and marker updates remain
+   immediate.
 2. **Vibrancy → blur → lens.** Apply 1.5 saturation before a separable Gaussian
    blur. Kernel weights depend on device pixels, and paired bilinear samples
-   integrate adjacent texels. All source and framebuffer textures keep native
-   resolution. Scissoring limits work to regions around the controls.
+   integrate adjacent texels. All source and framebuffer textures use the same
+   bounded glass resolution. Scissoring limits work to regions around the controls.
 3. **Edge height and displacement.** Match the Android reference's circular
    lens profile, `1 - sqrt(1 - x²)`. Card edge height/displacement are 24/36 CSS
    pixels, with a slight depth effect; capsule controls use 12/18. Displacement
@@ -53,12 +56,12 @@ the pin uses SVG to avoid emoji baseline differences.
    4 CSS pixels in height and adds a localized highlight. A small bounded drag
    displacement follows the pointer. DOM and shader follow the same transform.
 
-The animation target is 60 fps; this is a scheduling limit, not a guarantee on
-all devices. Static map views stop drawing after transitions, tile loading and
-interaction settle. Hidden documents stop drawing. Reduced motion freezes emoji
-particles and removes press scaling and springs. Device ratio changes (including
-browser zoom) reallocate the textures. Resolution is limited only if the GPU's
-maximum texture size would be exceeded.
+DOM transforms and press interactions can follow the display refresh rate, while
+the Liquid Glass backdrop is captured at up to 30 fps. Static map views stop
+drawing after transitions, tile loading and interaction settle. Hidden documents
+stop drawing. Reduced motion freezes emoji particles and removes press scaling
+and springs. Device ratio changes (including browser zoom) reallocate the
+textures, capped at DPR 1.5 and the GPU's maximum texture size.
 
 CSS `backdrop-filter` is the fallback for unavailable WebGL2, shader or texture
 errors, and context loss. Context restoration recreates GPU resources. The
@@ -74,15 +77,15 @@ reproduce the shader's sharp/blurred blend or edge displacement.
 
 ## What was corrected
 
-The first version reduced the **original** backdrop to 0.65 CSS-pixel resolution
-and capped the final canvas at 1.5 DPR. That degraded the sharp refraction and
-edge antialiasing. Its stretched five-tap blur skipped intervening texels and
-could produce banding on map details. The edge displacement was also too weak,
-and the inner buttons still used the original green/yellow CSS styles.
+The first version reduced the **original** backdrop to 0.65 CSS-pixel resolution.
+That degraded the sharp refraction and edge antialiasing. Its stretched five-tap
+blur skipped intervening texels and could produce banding on map details. The
+edge displacement was also too weak, and the inner buttons still used the
+original green/yellow CSS styles.
 
-Those shortcuts have been removed. Native-resolution sources, a dense Gaussian
-kernel, the reference's edge profile, exported parent surfaces and glass capsule
-controls replace them.
+The 0.65-resolution shortcut has been removed. A bounded DPR 1.5 source, dense
+Gaussian kernel, the reference's edge profile, exported parent surfaces and
+glass capsule controls replace it.
 
 ## Limits
 
