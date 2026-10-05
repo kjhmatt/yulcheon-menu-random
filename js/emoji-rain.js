@@ -4,7 +4,9 @@
 class EmojiRain {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
-    this.ctx = this.canvas.getContext('2d', { alpha: true, desynchronized: true });
+    // This transparent canvas sits below glass and DOM controls. Keep its
+    // clear-and-repaint cycle synchronized with the page compositor.
+    this.ctx = this.canvas.getContext('2d', { alpha: true, desynchronized: false });
     this.emojis = ['🍕', '🍔', '🍜', '🍣', '🍱', '🍛', '🥟', '🍗', '🍟', '🥘', '🍢', '🥩', '🌮', '🥗', '🍲', '🍙', '🍦', '🍩'];
     this.particles = [];
     this.maxParticles = 24; // 시각적 풍성함과 60fps 부드러움을 동시에 만족하는 최적 수
