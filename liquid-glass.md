@@ -27,7 +27,11 @@ the pin uses SVG to avoid emoji baseline differences.
 2. **Vibrancy → blur → lens.** Apply 1.5 saturation before a separable Gaussian
    blur. Kernel weights depend on device pixels, and paired bilinear samples
    integrate adjacent texels. All source and framebuffer textures use the same
-   bounded glass resolution. Scissoring limits work to regions around the controls.
+   bounded glass resolution. Scissoring limits Gaussian work to regions around
+   the controls. Before each backdrop blur, both intermediate textures are
+   filled with the current source image. Cards can move between 30 fps captures;
+   positions outside the last blurred region then show unblurred source colors
+   instead of zero-filled black pixels or an older backdrop.
 3. **Edge height and displacement.** Match the Android reference's circular
    lens profile, `1 - sqrt(1 - x²)`. Card edge height/displacement are 24/36 CSS
    pixels, with a slight depth effect; capsule controls use 12/18. Displacement

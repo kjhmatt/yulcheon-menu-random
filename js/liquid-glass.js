@@ -270,15 +270,35 @@ class LiquidGlass {
       gl.bindTexture(gl.TEXTURE_2D, this.original);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.scene);
-      this.blurScene(this.original, this.passes, LiquidGlass.material.cardBlur, true, this.surfaces);
+      this.blurScene(this.original, this.passes, LiquidGlass.material.cardBlur, true, this.surfaces, true);
       this.hasScene = true;
       this.requestDraw();
     } catch (error) { this.fail(error); }
   }
 
-  blurScene(input, passes, sigma, vibrancy, surfaces) {
+  copyBackdrop(input, framebuffer) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.viewport(0, 0, this.scene.width, this.scene.height);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(this.vao);
+    gl.useProgram(this.copy.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, input);
+    gl.uniform1i(this.copy.uniforms.u_texture, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  blurScene(input, passes, sigma, vibrancy, surfaces, fillOutside = false) {
     const gl = this.gl;
     const u = this.blur.uniforms;
+    if (fillOutside) {
+      // Cards can move between the 30 Hz backdrop captures. Seed both targets
+      // with this frame's colors so those positions never sample zeroed or
+      // stale regions. The expensive Gaussian work still stays scissored.
+      for (const pass of passes) this.copyBackdrop(input, pass.framebuffer);
+    }
     gl.disable(gl.SCISSOR_TEST);
     gl.disable(gl.BLEND);
     gl.bindVertexArray(this.vao);
@@ -379,15 +399,7 @@ class LiquidGlass {
 
     const outer = this.surfaces.filter(surface => !surface.closest('.card-view-layer'));
     const inner = this.surfaces.filter(surface => surface.closest('.card-view-layer'));
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.exported.framebuffer);
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.disable(gl.BLEND);
-    gl.useProgram(this.copy.program);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.original);
-    gl.uniform1i(this.copy.uniforms.u_texture, 0);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.copyBackdrop(this.original, this.exported.framebuffer);
     // Export only the finished outer material, excluding its DOM content and
     // children. This is the docs' exportedBackdrop pattern, without feedback.
     this.drawSurfaces(outer, this.original, this.passes[1].texture);
