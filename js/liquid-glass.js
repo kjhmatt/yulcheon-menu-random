@@ -240,7 +240,7 @@ class LiquidGlass {
     this.surfaces = this.surfaces.filter(surface => !surface.classList.contains('dest-bubble-card'));
     this.surfaces.unshift(element.querySelector('.dest-bubble-card'));
     this.markerObserver = new MutationObserver(() => this.capture(true));
-    this.markerObserver.observe(element, { attributes: true, attributeFilter: ['style'] });
+    this.markerObserver.observe(element, { attributes: true, attributeFilter: ['style', 'class'] });
     this.markerResizeObserver = new ResizeObserver(() => this.capture(true));
     this.markerResizeObserver.observe(element);
     this.capture(true);
