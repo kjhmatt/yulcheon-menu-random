@@ -11,6 +11,40 @@ class NavigationMap {
     this.isMapReady = false;
     this._loadResolvers = [];
     this.compassDial = null;
+    this.mainCard = document.getElementById('main-card');
+    this.markerVisibilityFrame = null;
+    this.markerPositionObserver = new MutationObserver(() => this.scheduleMarkerVisibility());
+    if (this.mainCard) {
+      this.cardResizeObserver = new ResizeObserver(() => this.scheduleMarkerVisibility());
+      this.cardResizeObserver.observe(this.mainCard);
+      this.cardStateObserver = new MutationObserver(() => this.scheduleMarkerVisibility());
+      this.cardStateObserver.observe(this.mainCard, { attributes: true, attributeFilter: ['class', 'style'] });
+      this.mainCard.addEventListener('transitionrun', () => this.scheduleMarkerVisibility());
+    }
+  }
+
+  scheduleMarkerVisibility() {
+    if (this.markerVisibilityFrame !== null) return;
+    this.markerVisibilityFrame = requestAnimationFrame(() => {
+      this.markerVisibilityFrame = null;
+      this.updateMarkerVisibility();
+      // Follow the card's translation as well as its animated height, including
+      // when Liquid Glass falls back to CSS and the map is stationary.
+      if (this.mainCard?.getAnimations().some(animation => animation.playState === 'running')) {
+        this.scheduleMarkerVisibility();
+      }
+    });
+  }
+
+  updateMarkerVisibility() {
+    if (!this.destMarker || !this.mainCard) return;
+    const element = this.destMarker.getElement();
+    const marker = element.getBoundingClientRect();
+    const card = this.mainCard.getBoundingClientRect();
+    const gap = 8;
+    const overlaps = marker.right > card.left - gap && marker.left < card.right + gap
+      && marker.bottom > card.top - gap && marker.top < card.bottom + gap;
+    element.classList.toggle('marker-occluded', overlaps);
   }
 
   // 두 좌표 간 직선 거리(미터) 계산 (Haversine 공식)
@@ -252,6 +286,7 @@ class NavigationMap {
 
   // 목적지 식당 말풍선 마커 렌더링
   renderDestinationMarker(coords, name, durationMinutes) {
+    this.markerPositionObserver.disconnect();
     if (this.destMarker) this.destMarker.remove();
 
     const el = document.createElement('div');
@@ -278,6 +313,8 @@ class NavigationMap {
       .addTo(this.map);
     // MapLibre retains position updates; DOM text sits above the glass canvas.
     document.getElementById('map-marker-layer').appendChild(el);
+    this.markerPositionObserver.observe(el, { attributes: true, attributeFilter: ['style'] });
+    this.updateMarkerVisibility();
     this.onDestinationMarker?.(el);
   }
 

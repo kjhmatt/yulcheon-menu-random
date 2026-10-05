@@ -422,6 +422,10 @@ body {
   font-family: var(--font-family);
   line-height: 18px;
 }
+.dest-marker-container.marker-occluded {
+  visibility: hidden;
+  pointer-events: none;
+}
 .dest-bubble-inner {
   display: flex;
   flex-direction: column;
